@@ -1,17 +1,32 @@
 package com.dondone.mobile.feature.home.presentation
 
+import com.dondone.mobile.app.session.RemittanceCompletionNoticeUiState
+import com.dondone.mobile.app.session.WorkproofActionUiState
 import com.dondone.mobile.core.designsystem.BadgeTone
+import com.dondone.mobile.core.i18n.AppLanguage
+import com.dondone.mobile.core.i18n.AppTextKeys
+import com.dondone.mobile.core.i18n.text
 import com.dondone.mobile.core.ui.formatKrw
-import com.dondone.mobile.domain.calculator.AdvanceCalculator
+import com.dondone.mobile.data.auth.AuthSession
+import com.dondone.mobile.data.remittance.RemittanceRemoteMode
+import com.dondone.mobile.data.remittance.RemittanceRemoteState
+import com.dondone.mobile.data.wage.WageRemoteState
+import com.dondone.mobile.data.workproof.WorkproofRemoteMode
+import com.dondone.mobile.data.workproof.WorkproofRemoteState
 import com.dondone.mobile.domain.calculator.WageEstimator
 import com.dondone.mobile.domain.model.DemoState
-import kotlin.math.abs
+import com.dondone.mobile.domain.model.TransferStatus
+import java.math.RoundingMode
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 data class HomeAccountUiModel(
+    val titleText: String,
     val balanceText: String,
-    val sendableAmountText: String,
-    val selectedAccountText: String,
-    val hintText: String
+    val balanceAmountText: String,
+    val balanceUnitText: String?
 )
 
 data class HomeWorkUiModel(
@@ -20,86 +35,256 @@ data class HomeWorkUiModel(
     val statusTone: BadgeTone,
     val canClockIn: Boolean,
     val canClockOut: Boolean,
-    val clockSummary: String,
-    val impactText: String,
-    val advanceAvailableText: String,
-    val advanceProgressText: String,
-    val advanceProgress: Float,
-    val advanceHintText: String
+    val isWithinWorkplaceRadius: Boolean,
+    val clockInText: String,
+    val clockOutText: String,
+    val noticeTitle: String? = null,
+    val noticeMessage: String? = null,
+    val showRecordSummary: Boolean = true,
+    val showActions: Boolean = true
+)
+
+enum class HomeActionTarget {
+    WAGE,
+    FINANCE,
+    MENU
+}
+
+data class HomeNextActionUiModel(
+    val title: String,
+    val message: String,
+    val buttonText: String,
+    val actionTarget: HomeActionTarget
 )
 
 data class HomeMoneyUiModel(
-    val statusText: String,
-    val statusTone: BadgeTone,
-    val summaryText: String,
-    val estimatedText: String,
-    val actualText: String,
-    val differenceText: String,
-    val hintText: String
+    val showWorkActionCard: Boolean,
+    val nextAction: HomeNextActionUiModel
+)
+
+data class HomeCompletionBannerUiModel(
+    val title: String,
+    val message: String,
+    val tone: BadgeTone
 )
 
 data class HomeUiModel(
     val account: HomeAccountUiModel,
     val work: HomeWorkUiModel,
-    val money: HomeMoneyUiModel
+    val money: HomeMoneyUiModel,
+    val completionBanner: HomeCompletionBannerUiModel? = null
 )
 
-fun DemoState.toHomeUiModel(): HomeUiModel {
+fun DemoState.toHomeUiModel(
+    language: AppLanguage = AppLanguage.KOREAN,
+    workproofActionUiState: WorkproofActionUiState? = null,
+    wageRemoteState: WageRemoteState? = null,
+    remittanceRemoteState: RemittanceRemoteState = RemittanceRemoteState.unauthenticated(""),
+    remittanceCompletionNoticeUiState: RemittanceCompletionNoticeUiState = RemittanceCompletionNoticeUiState(),
+    isAuthenticated: Boolean = false,
+    session: AuthSession? = null,
+    workproofRemoteState: WorkproofRemoteState = WorkproofRemoteState.unauthenticated("")
+): HomeUiModel {
     val selectedAccount = remittance.selectedAccount()
     val wageEstimate = WageEstimator.calculate(this)
-    val advance = AdvanceCalculator.calculate(this)
-    val progress = if (advance.progressTargetDays == 0) 1f else advance.verifiedDays / advance.progressTargetDays.toFloat()
-    val clockIn = workproof.today.clockIn ?: "-"
-    val clockOut = workproof.today.clockOut ?: "-"
+    val formattedMonth = demo.month.toString().padStart(2, '0')
+    fun formatDay(day: Int): String = day.toString().padStart(2, '0')
+    val currentDateText = "${demo.year}-$formattedMonth-${formatDay(demo.asOfDay)}"
+    val clockIn = workproof.today.clockIn?.let { "$currentDateText · $it" } ?: "-"
+    val clockOut = workproof.today.clockOut?.let { "$currentDateText · $it" } ?: "-"
+
+    val isClockedOut = workproof.today.clockOut != null
+    val isClockedInOnly = workproof.today.clockIn != null && workproof.today.clockOut == null
     val workStatusText = when {
-        workproof.today.clockOut != null -> "완료"
-        workproof.today.clockIn != null -> "출근만"
-        else -> "준비됨"
+        isClockedOut -> language.text("completed")
+        isClockedInOnly -> language.text(AppTextKeys.HOME_CLOCK_IN_RECORDED)
+        else -> language.text(AppTextKeys.HOME_READY)
     }
-    val workStatusTone = when (workStatusText) {
-        "완료" -> BadgeTone.Success
-        "출근만" -> BadgeTone.Warning
+    val workStatusTone = when {
+        isClockedOut -> BadgeTone.Success
+        isClockedInOnly -> BadgeTone.Warning
         else -> BadgeTone.Info
     }
-    val moneyStatusText = if (wageEstimate.difference == 0) "차이 없음" else "확인 필요한 차이"
-    val moneyStatusTone = if (wageEstimate.difference == 0) BadgeTone.Success else BadgeTone.Warning
+
+    val remoteSummary = wageRemoteState?.payload?.summary
+    val isDepositRecorded = remoteSummary?.actualDepositAmount != null || wage.actualDepositRecordedDay != null
+    val hasDifference = remoteSummary?.differenceAmount?.let { it != 0L } ?: (wageEstimate.difference != 0)
+    val isPaydayUpcoming = demo.asOfDay < (remoteSummary?.paydayDay ?: wage.paydayDay)
+
+    val nextAction = when {
+        !isDepositRecorded && isPaydayUpcoming -> HomeNextActionUiModel(
+            title = language.text(AppTextKeys.HOME_NEXT_STEP),
+            message = language.text(AppTextKeys.HOME_PREPAYDAY_MESSAGE),
+            buttonText = language.text(AppTextKeys.HOME_VIEW_FINANCE),
+            actionTarget = HomeActionTarget.FINANCE
+        )
+
+        !isDepositRecorded -> HomeNextActionUiModel(
+            title = language.text(AppTextKeys.HOME_NEXT_STEP),
+            message = language.text(AppTextKeys.HOME_ENTER_DEPOSIT_MESSAGE),
+            buttonText = language.text(AppTextKeys.HOME_ENTER_DEPOSIT),
+            actionTarget = HomeActionTarget.WAGE
+        )
+
+        hasDifference -> HomeNextActionUiModel(
+            title = language.text(AppTextKeys.HOME_NEXT_STEP),
+            message = language.text(AppTextKeys.HOME_DIFFERENCE_MESSAGE),
+            buttonText = language.text(AppTextKeys.HOME_VIEW),
+            actionTarget = HomeActionTarget.WAGE
+        )
+
+        else -> HomeNextActionUiModel(
+            title = language.text(AppTextKeys.HOME_NEXT_STEP),
+            message = language.text(AppTextKeys.HOME_SMALL_DIFFERENCE_MESSAGE),
+            buttonText = language.text(AppTextKeys.HOME_VIEW_FINANCE),
+            actionTarget = HomeActionTarget.FINANCE
+        )
+    }
+    val completionBanner = remittanceCompletionNoticeUiState.toHomeCompletionBannerUiModel(language)
+    val requiresCompanyRegistration =
+        isAuthenticated &&
+            workproofRemoteState.mode == WorkproofRemoteMode.EMPTY &&
+            session?.workplaceName.isNullOrBlank()
 
     return HomeUiModel(
-        account = HomeAccountUiModel(
-            balanceText = formatKrw(selectedAccount.balance),
-            sendableAmountText = formatKrw(remittance.draftAmountUsd * 1_450),
-            selectedAccountText = "${selectedAccount.name} · ${selectedAccount.number}",
-            hintText = "계좌를 먼저 확인한 뒤 송금을 시작해볼까요?"
+        account = resolveHomeAccountUiModel(
+            selectedAccount = selectedAccount,
+            remittanceRemoteState = remittanceRemoteState,
+            isAuthenticated = isAuthenticated,
+            language = language
         ),
         work = HomeWorkUiModel(
-            dateText = "${demo.year}-${demo.month.toString().padStart(2, '0')}-${demo.asOfDay.toString().padStart(2, '0')} · ${workproof.workplaceName}",
-            statusText = workStatusText,
-            statusTone = workStatusTone,
-            canClockIn = workproof.today.clockIn == null,
-            canClockOut = workproof.today.clockIn != null && workproof.today.clockOut == null,
-            clockSummary = "출근 $clockIn · 퇴근 $clockOut",
-            impactText = "오늘 기록을 남기면 미리받기 한도와 월급 확인 근거가 쌓여요.",
-            advanceAvailableText = formatKrw(advance.available),
-            advanceProgressText = "${advance.verifiedDays}일 / ${advance.progressTargetDays}일",
-            advanceProgress = progress,
-            advanceHintText = if (advance.nextTierInDays > 0) {
-                "다음 구간까지 ${advance.nextTierInDays}일 · 예상 증가 ${formatKrw(advance.nextTierGain)}"
+            dateText = if (requiresCompanyRegistration) language.text(AppTextKeys.HOME_COMPANY_REGISTRATION_REQUIRED) else currentDateText,
+            statusText = if (requiresCompanyRegistration) language.text(AppTextKeys.HOME_NOTICE) else workStatusText,
+            statusTone = if (requiresCompanyRegistration) BadgeTone.Info else workStatusTone,
+            canClockIn = !requiresCompanyRegistration &&
+                workproof.today.clockIn == null &&
+                workproofActionUiState?.isSubmitting != true,
+            canClockOut = !requiresCompanyRegistration &&
+                workproof.today.clockIn != null &&
+                workproof.today.clockOut == null &&
+                workproofActionUiState?.isSubmitting != true,
+            isWithinWorkplaceRadius = workproof.isWithinWorkplaceRadius(),
+            clockInText = clockIn,
+            clockOutText = clockOut,
+            noticeTitle = if (requiresCompanyRegistration) language.text(AppTextKeys.HOME_COMPANY_REGISTRATION_REQUIRED) else null,
+            noticeMessage = if (requiresCompanyRegistration) {
+                language.text(AppTextKeys.HOME_REGISTRATION_CODE_NOTICE)
             } else {
-                "이번 달 최고 구간에 도달했어요."
-            }
+                null
+            },
+            showRecordSummary = !requiresCompanyRegistration,
+            showActions = !requiresCompanyRegistration
         ),
         money = HomeMoneyUiModel(
-            statusText = moneyStatusText,
-            statusTone = moneyStatusTone,
-            summaryText = "추정 ${formatKrw(wageEstimate.total)} · 실제 ${formatKrw(wage.actualDeposit)}",
-            estimatedText = formatKrw(wageEstimate.total),
-            actualText = formatKrw(wage.actualDeposit),
-            differenceText = "차액 ${formatKrw(abs(wageEstimate.difference))}",
-            hintText = if (wageEstimate.difference == 0) {
-                "지금까지는 차이가 보이지 않아요."
-            } else {
-                "확인 필요한 차이가 보여요. 급여 점검에서 근거부터 확인해볼까요?"
+            showWorkActionCard = isDepositRecorded && hasDifference,
+            nextAction = nextAction
+        ),
+        completionBanner = completionBanner
+    )
+}
+
+private fun resolveHomeAccountUiModel(
+    selectedAccount: com.dondone.mobile.domain.model.Account,
+    remittanceRemoteState: RemittanceRemoteState,
+    isAuthenticated: Boolean,
+    language: AppLanguage
+): HomeAccountUiModel {
+    if (isAuthenticated) {
+        val remotePayload = remittanceRemoteState.payload
+        return HomeAccountUiModel(
+            titleText = language.text(AppTextKeys.HOME_PRIMARY_WALLET),
+            balanceText = when (remittanceRemoteState.mode) {
+                RemittanceRemoteMode.CONTENT -> remotePayload?.balance?.formatTokenBalanceForHome(language) ?: language.text(AppTextKeys.HOME_CHECKING_BALANCE)
+                RemittanceRemoteMode.LOADING -> language.text(AppTextKeys.HOME_CHECKING_BALANCE)
+                else -> language.text(AppTextKeys.HOME_CHECKING_WALLET_INFO)
+            },
+            balanceAmountText = when (remittanceRemoteState.mode) {
+                RemittanceRemoteMode.CONTENT -> remotePayload?.balance?.formatTokenAmountForHome(language) ?: language.text(AppTextKeys.HOME_CHECKING_BALANCE)
+                RemittanceRemoteMode.LOADING -> language.text(AppTextKeys.HOME_CHECKING_BALANCE)
+                else -> language.text(AppTextKeys.HOME_CHECKING_WALLET_INFO)
+            },
+            balanceUnitText = when (remittanceRemoteState.mode) {
+                RemittanceRemoteMode.CONTENT -> remotePayload?.balance?.assetSymbol
+                else -> null
             }
         )
+    }
+
+    return HomeAccountUiModel(
+        titleText = language.text(AppTextKeys.HOME_PRIMARY_ACCOUNT),
+        balanceText = formatKrw(selectedAccount.balance, language),
+        balanceAmountText = formatKrw(selectedAccount.balance, language),
+        balanceUnitText = null
     )
+}
+
+private fun com.dondone.mobile.data.remittance.RemittanceWalletBalancePayload.formatTokenBalanceForHome(
+    language: AppLanguage
+): String {
+    val amount = formatTokenAmountForHome(language)
+    return if (amount == language.text(AppTextKeys.HOME_CHECKING_BALANCE)) amount else "$amount $assetSymbol"
+}
+
+private fun com.dondone.mobile.data.remittance.RemittanceWalletBalancePayload.formatTokenAmountForHome(
+    language: AppLanguage
+): String {
+    val normalized = tokenBalanceAtomic.toBigDecimalOrNull()
+        ?.movePointLeft(assetDecimals)
+        ?.setScale(2, RoundingMode.DOWN)
+        ?: return language.text(AppTextKeys.HOME_CHECKING_BALANCE)
+    return normalized.stripTrailingZeros().toPlainString()
+}
+
+private fun RemittanceCompletionNoticeUiState.toHomeCompletionBannerUiModel(
+    language: AppLanguage
+): HomeCompletionBannerUiModel? {
+    if (!isVisible || status == null) {
+        return null
+    }
+
+    val recipientLabel = recipientName ?: language.text(AppTextKeys.HOME_SAVED_RECIPIENT)
+    return when (status) {
+        TransferStatus.CONFIRMED -> HomeCompletionBannerUiModel(
+            title = language.text(AppTextKeys.HOME_TRANSFER_COMPLETE),
+            message = language.text(AppTextKeys.HOME_TRANSFER_COMPLETE_MESSAGE, recipientLabel),
+            tone = BadgeTone.Success
+        )
+
+        TransferStatus.FAILED -> HomeCompletionBannerUiModel(
+            title = language.text(AppTextKeys.HOME_TRANSFER_FAILED),
+            message = language.text(AppTextKeys.HOME_TRANSFER_FAILED_MESSAGE, recipientLabel),
+            tone = BadgeTone.Warning
+        )
+
+        else -> null
+    }
+}
+
+private fun com.dondone.mobile.domain.model.WorkproofData.isWithinWorkplaceRadius(): Boolean {
+    return haversineDistanceMeters(
+        startLatitude = currentLatitude,
+        startLongitude = currentLongitude,
+        endLatitude = workplaceLatitude,
+        endLongitude = workplaceLongitude
+    ) <= allowedRadiusMeters
+}
+
+private fun haversineDistanceMeters(
+    startLatitude: Double,
+    startLongitude: Double,
+    endLatitude: Double,
+    endLongitude: Double
+): Double {
+    val earthRadiusMeters = 6_371_000.0
+    val latitudeDelta = Math.toRadians(endLatitude - startLatitude)
+    val longitudeDelta = Math.toRadians(endLongitude - startLongitude)
+    val startLatitudeRadians = Math.toRadians(startLatitude)
+    val endLatitudeRadians = Math.toRadians(endLatitude)
+
+    val a = sin(latitudeDelta / 2) * sin(latitudeDelta / 2) +
+        cos(startLatitudeRadians) * cos(endLatitudeRadians) *
+        sin(longitudeDelta / 2) * sin(longitudeDelta / 2)
+    val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return earthRadiusMeters * c
 }

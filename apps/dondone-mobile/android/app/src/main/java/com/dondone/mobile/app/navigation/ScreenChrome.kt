@@ -1,35 +1,79 @@
 package com.dondone.mobile.app.navigation
 
+import com.dondone.mobile.core.i18n.AppLanguage
+import com.dondone.mobile.core.i18n.AppTextKeys
+import com.dondone.mobile.core.i18n.text
 import com.dondone.mobile.domain.model.TransferFlowStep
+import com.dondone.mobile.domain.model.TransferStatus
 
 data class ScreenChrome(
-    val title: String,
+    val headerTitle: String?,
     val showRootTabs: Boolean,
-    val showSettingsAction: Boolean
+    val showSettingsAction: Boolean,
+    val showDate: Boolean
 )
 
 fun resolveScreenChrome(
     route: String,
-    transferStep: TransferFlowStep
+    transferStep: TransferFlowStep,
+    transferStatus: TransferStatus,
+    isWorkproofDetailVisible: Boolean,
+    language: AppLanguage = AppLanguage.KOREAN
 ): ScreenChrome {
     return if (isRootRoute(route)) {
         ScreenChrome(
-            title = if (route == Route.HOME) "DonDone" else routeTitle(route),
+            headerTitle = when {
+                route == Route.HOME -> null
+                route == Route.WORKPROOF && isWorkproofDetailVisible -> null
+                else -> routeTitle(route, language)
+            },
             showRootTabs = true,
-            showSettingsAction = route == Route.HOME
+            showSettingsAction = false,
+            showDate = route != Route.HOME && route != Route.MENU &&
+                route != Route.FINANCE_HOME &&
+                !(route == Route.WORKPROOF && isWorkproofDetailVisible)
         )
     } else {
         ScreenChrome(
-            title = when (route) {
-                Route.TRANSFER -> when (transferStep) {
-                    TransferFlowStep.ACCOUNT -> "계좌 선택"
-                    TransferFlowStep.RECIPIENT -> "받는 사람 선택"
-                    TransferFlowStep.AMOUNT -> "금액 입력"
-                }
-                else -> routeTitle(route)
-            },
+            headerTitle = resolveChildHeaderTitle(route, transferStep, transferStatus, language),
             showRootTabs = false,
-            showSettingsAction = false
+            showSettingsAction = false,
+            showDate = route != Route.TRANSFER &&
+                route != Route.ACCOUNT &&
+                !isTransactionHistoryRoute(route)
         )
+    }
+}
+
+private fun resolveChildHeaderTitle(
+    route: String,
+    transferStep: TransferFlowStep,
+    transferStatus: TransferStatus,
+    language: AppLanguage
+): String? {
+    return when (route) {
+        Route.WAGE -> null
+        Route.TRANSFER -> resolveTransferHeaderTitle(transferStep, transferStatus, language)
+        else -> routeTitle(route, language)
+    }
+}
+
+private fun resolveTransferHeaderTitle(
+    transferStep: TransferFlowStep,
+    transferStatus: TransferStatus,
+    language: AppLanguage
+): String? {
+    if (
+        transferStatus == TransferStatus.SUBMITTED ||
+        transferStatus == TransferStatus.CONFIRMED ||
+        transferStatus == TransferStatus.FAILED
+    ) {
+        return null
+    }
+
+    return when (transferStep) {
+        TransferFlowStep.ACCOUNT -> language.text(AppTextKeys.SELECT_ACCOUNT)
+        TransferFlowStep.RECIPIENT -> null
+        TransferFlowStep.AMOUNT -> null
     }
 }

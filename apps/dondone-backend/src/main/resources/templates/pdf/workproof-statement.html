@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="${snapshot.statement.title}">근무 기록 문서</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 16mm 14mm 18mm 14mm;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans CJK KR", Arial, sans-serif;
+            color: #111827;
+            font-size: 11px;
+            line-height: 1.5;
+            background: #ffffff;
+        }
+
+        .page {
+            width: 100%;
+        }
+
+        .header {
+            border-bottom: 2px solid #111827;
+            padding-bottom: 10px;
+            margin-bottom: 14px;
+        }
+
+        .brand {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            color: #6b7280;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        .header-grid {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .header-grid td {
+            border: none;
+            padding: 0;
+            vertical-align: top;
+        }
+
+        .title {
+            font-size: 24px;
+            font-weight: 700;
+            margin: 0 0 4px 0;
+        }
+
+        .subtitle {
+            font-size: 11px;
+            color: #374151;
+            margin: 0;
+        }
+
+        .meta-box {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .meta-box th,
+        .meta-box td {
+            border: none;
+            padding: 2px 0 2px 10px;
+            font-size: 10px;
+            text-align: left;
+        }
+
+        .meta-box th {
+            width: 72px;
+            color: #6b7280;
+            font-weight: 600;
+        }
+
+        .section {
+            margin-bottom: 14px;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .info-grid {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 8px;
+            margin: 0 -8px;
+        }
+
+        .info-card {
+            width: 50%;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            padding: 10px 12px;
+            vertical-align: top;
+        }
+
+        .info-label {
+            font-size: 10px;
+            color: #6b7280;
+            margin-bottom: 2px;
+        }
+
+        .info-value {
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .summary-grid {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 8px;
+            margin: 0 -8px;
+        }
+
+        .summary-grid td {
+            width: 33.333%;
+        }
+
+        .summary-card {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 10px;
+            background: #f9fafb;
+            height: 100%;
+        }
+
+        .summary-label {
+            font-size: 10px;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+
+        .summary-number {
+            font-size: 16px;
+            font-weight: 700;
+            color: #111827;
+        }
+
+        .summary-detail {
+            font-size: 10px;
+            color: #4b5563;
+            margin-top: 3px;
+        }
+
+        table.data-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        .data-table th {
+            background: #f3f4f6;
+            color: #374151;
+            font-size: 10px;
+            font-weight: 700;
+            text-align: left;
+            padding: 8px 6px;
+            border: 1px solid #d1d5db;
+        }
+
+        .data-table td {
+            font-size: 10px;
+            padding: 7px 6px;
+            border: 1px solid #e5e7eb;
+            vertical-align: top;
+            word-break: break-word;
+        }
+
+        .muted {
+            color: #6b7280;
+        }
+
+        .page-break {
+            page-break-before: always;
+        }
+
+        .footer {
+            margin-top: 18px;
+            padding-top: 8px;
+            border-top: 1px solid #d1d5db;
+            font-size: 9px;
+            color: #6b7280;
+        }
+    </style>
+</head>
+<body>
+<div class="page">
+    <header class="header">
+        <div class="brand">DonDone</div>
+        <table class="header-grid">
+            <tr>
+                <td style="width: 60%;">
+                    <h1 class="title" th:text="${snapshot.statement.title}">근무 기록 문서</h1>
+                    <p class="subtitle" th:text="${snapshot.statement.subtitle}">
+                        선택한 기간의 출퇴근 기록과 변경 이력을 정리한 문서
+                    </p>
+                </td>
+                <td style="width: 40%;">
+                    <table class="meta-box">
+                        <tr>
+                            <th>문서번호</th>
+                            <td th:text="${snapshot.meta.documentNumber}">WS-202603-000001</td>
+                        </tr>
+                        <tr>
+                            <th>생성 시각</th>
+                            <td th:text="${snapshot.meta.generatedAt}">2026-03-19 16:00:00</td>
+                        </tr>
+                        <tr>
+                            <th>대상 기간</th>
+                            <td th:text="${snapshot.period.periodLabel}">대상 기간: 2026-03-01 ~ 2026-03-31</td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </header>
+
+    <section class="section">
+        <div class="section-title">기본 정보</div>
+        <table class="info-grid">
+            <tr>
+                <td class="info-card">
+                    <div class="info-label">근로자 이름</div>
+                    <div class="info-value" th:text="${snapshot.worker.name}">홍길동</div>
+                    <div class="info-label">이메일</div>
+                    <div th:text="${snapshot.worker.email}">test@example.com</div>
+                    <div class="info-label">연락처</div>
+                    <div th:text="${snapshot.worker.phoneNumber}">010-1234-5678</div>
+                </td>
+                <td class="info-card">
+                    <div class="info-label">근무지명</div>
+                    <div class="info-value" th:text="${snapshot.workplace.name}">Proof Pack Cafe</div>
+                    <div class="info-label">주소</div>
+                    <div th:text="${snapshot.workplace.address}">Seoul Somewhere 1</div>
+                </td>
+            </tr>
+        </table>
+    </section>
+
+    <section class="section">
+        <div class="section-title">기간 요약</div>
+        <table class="summary-grid">
+            <tr>
+                <td>
+                    <div class="summary-card">
+                        <div class="summary-label">대상 기간</div>
+                        <div class="summary-number" th:text="${snapshot.period.startDate + ' ~ ' + snapshot.period.endDate}">2026-03-01 ~ 2026-03-31</div>
+                        <div class="summary-detail" th:text="${snapshot.period.periodLabel}">대상 기간: 2026-03-01 ~ 2026-03-31</div>
+                    </div>
+                </td>
+                <td>
+                    <div class="summary-card">
+                        <div class="summary-label">근무일 수</div>
+                        <div class="summary-number" th:text="${snapshot.summary.totalWorkDayCountLabel}">8일</div>
+                    </div>
+                </td>
+                <td>
+                    <div class="summary-card">
+                        <div class="summary-label">총 근무시간</div>
+                        <div class="summary-number" th:text="${snapshot.summary.totalWorkedHoursLabel}">126시간 30분</div>
+                        <div class="summary-detail" th:text="'총 근무 분 ' + ${snapshot.summary.totalWorkedMinutes}">총 근무 분 7590</div>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <div class="summary-card">
+                        <div class="summary-label">수정 기록 수</div>
+                        <div class="summary-number" th:text="${snapshot.summary.editedCount}">1</div>
+                    </div>
+                </td>
+                <td>
+                    <div class="summary-card">
+                        <div class="summary-label">특이사항 수</div>
+                        <div class="summary-number" th:text="${snapshot.summary.issueCountLabel}">2건</div>
+                    </div>
+                </td>
+                <td></td>
+            </tr>
+        </table>
+    </section>
+
+    <section class="section">
+        <div class="section-title">출퇴근 기록</div>
+        <table class="data-table">
+            <thead>
+            <tr>
+                <th style="width: 16%;">날짜</th>
+                <th style="width: 13%;">출근</th>
+                <th style="width: 13%;">퇴근</th>
+                <th style="width: 16%;">근무시간</th>
+                <th style="width: 42%;">비고</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="record : ${snapshot.records}">
+                <td th:text="${record.workDate}">2026-03-10</td>
+                <td th:text="${record.clockInAt}">09:00</td>
+                <td th:text="${record.clockOutAt}">18:00</td>
+                <td th:text="${record.workedHoursLabel}">9시간 00분</td>
+                <td th:text="${record.remarks}">수정 기록 있음 / 첨부 있음</td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <section class="section page-break" th:if="${!#lists.isEmpty(snapshot.audits)}">
+        <div class="section-title">수정 이력</div>
+        <table class="data-table">
+            <thead>
+            <tr>
+                <th style="width: 16%;">수정 시각</th>
+                <th style="width: 14%;">대상 날짜</th>
+                <th style="width: 48%;">변경 내용</th>
+                <th style="width: 22%;">수정 사유</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="audit : ${snapshot.audits}">
+                <td th:text="${audit.editedAt}">2026-03-12 10:00:00</td>
+                <td th:text="${audit.workDate}">2026-03-10</td>
+                <td th:text="${audit.changeSummary}">출근 09:00→09:10 / 퇴근 18:00→18:10 / 사유: Correction</td>
+                <td th:text="${audit.editReason}">Correction</td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <footer class="footer">
+        <div>Generated by DonDone</div>
+        <div th:text="'Document Type: ' + ${snapshot.meta.documentType}">Document Type: WORKPROOF_STATEMENT</div>
+    </footer>
+</div>
+</body>
+</html>

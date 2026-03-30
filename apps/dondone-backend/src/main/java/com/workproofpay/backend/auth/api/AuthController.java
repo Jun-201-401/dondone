@@ -2,6 +2,8 @@ package com.workproofpay.backend.auth.api;
 
 import com.workproofpay.backend.auth.api.dto.request.LoginRequest;
 import com.workproofpay.backend.auth.api.dto.request.SignupRequest;
+import com.workproofpay.backend.auth.api.dto.request.UpdateCompanyCodeRequest;
+import com.workproofpay.backend.auth.api.dto.request.UpdateProfileRequest;
 import com.workproofpay.backend.auth.api.dto.response.LoginResponse;
 import com.workproofpay.backend.auth.api.dto.response.MeResponse;
 import com.workproofpay.backend.shared.api.ApiResponse;
@@ -38,7 +40,7 @@ public class AuthController {
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Signup succeeded"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Email already exists", content = @Content)
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Email or phone number already exists", content = @Content)
     })
     public ResponseEntity<ApiResponse<MeResponse>> signup(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -100,5 +102,42 @@ public class AuthController {
     })
     public ResponseEntity<ApiResponse<MeResponse>> me(@AuthenticationPrincipal AuthenticatedUser user) {
         return ApiResponse.success(authService.getMe(user.userId()));
+    }
+
+    @PutMapping("/me")
+    @Operation(
+            summary = "Update current user",
+            description = "Updates the authenticated user's profile name and phone number.",
+            security = @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Current user updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid token", content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Phone number already exists", content = @Content)
+    })
+    public ResponseEntity<ApiResponse<MeResponse>> updateMe(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @Valid @RequestBody UpdateProfileRequest request
+    ) {
+        return ApiResponse.success(authService.updateMe(user.userId(), request));
+    }
+
+    @PutMapping("/me/company-code")
+    @Operation(
+            summary = "Update current user company code",
+            description = "Updates the authenticated user's current company code.",
+            security = @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Company code updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation failed", content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid token", content = @Content)
+    })
+    public ResponseEntity<ApiResponse<MeResponse>> updateCompanyCode(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @Valid @RequestBody UpdateCompanyCodeRequest request
+    ) {
+        return ApiResponse.success(authService.updateCompanyCode(user.userId(), request));
     }
 }

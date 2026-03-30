@@ -1,5 +1,7 @@
 package com.dondone.mobile.domain.model
 
+import java.time.LocalDate
+
 data class DemoInfo(
     val year: Int,
     val month: Int,
@@ -14,11 +16,16 @@ data class TodayWork(
 
 data class WorkRecord(
     val id: String,
+    val workDate: LocalDate,
     val day: Int,
     val inTime: String,
     val outTime: String,
     val modified: Boolean,
-    val attachments: Int
+    val attachments: Int,
+    val reflectionStatus: String = "PENDING",
+    val decisionMemo: String? = null,
+    val recognizedInTime: String? = null,
+    val recognizedOutTime: String? = null
 )
 
 data class WorkAudit(
@@ -33,9 +40,15 @@ data class WorkAudit(
 data class WorkproofData(
     val workplaceName: String,
     val workplaceAddress: String,
+    val workplaceLatitude: Double,
+    val workplaceLongitude: Double,
+    val currentLatitude: Double,
+    val currentLongitude: Double,
     val today: TodayWork,
     val records: List<WorkRecord>,
-    val audit: List<WorkAudit>
+    val audit: List<WorkAudit>,
+    val workplaceId: Long? = null,
+    val allowedRadiusMeters: Int = 1000
 )
 
 data class WageData(
@@ -65,22 +78,30 @@ data class Recipient(
 )
 
 enum class TransferStatus {
-    IDLE, SUBMITTED, CONFIRMED
+    IDLE, REVIEWING, SUBMITTED, CONFIRMED, FAILED
 }
 
 enum class TransferFlowStep {
     ACCOUNT, RECIPIENT, AMOUNT
 }
 
+enum class TransferDestinationMode {
+    ACCOUNT, WALLET
+}
+
 data class RemittanceData(
     val accounts: List<Account>,
     val selectedAccountId: String,
     val recipients: List<Recipient>,
+    val transactions: List<TransactionRecord> = emptyList(),
     val selectedRecipientId: String,
+    val recipientDisplayNameOverride: String? = null,
     val draftAmountUsd: Int,
     val txHash: String,
     val status: TransferStatus,
-    val flowStep: TransferFlowStep
+    val flowStep: TransferFlowStep,
+    val destinationMode: TransferDestinationMode = TransferDestinationMode.ACCOUNT,
+    val stepReturnTarget: TransferFlowStep? = null
 ) {
     fun selectedAccountOrNull(): Account? = accounts.firstOrNull { it.id == selectedAccountId } ?: accounts.firstOrNull()
 
@@ -89,6 +110,8 @@ data class RemittanceData(
     fun selectedRecipientOrNull(): Recipient? = recipients.firstOrNull { it.id == selectedRecipientId } ?: recipients.firstOrNull()
 
     fun selectedRecipient(): Recipient = requireNotNull(selectedRecipientOrNull()) { "No recipient available" }
+
+    fun displayedRecipientName(): String = recipientDisplayNameOverride?.takeIf { it.isNotBlank() } ?: selectedRecipient().name
 
     fun setSelectedAccountBalance(balance: Int): RemittanceData {
         return copy(

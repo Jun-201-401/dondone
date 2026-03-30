@@ -1,100 +1,370 @@
 package com.dondone.mobile.feature.finance.presentation
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import com.dondone.mobile.core.designsystem.DawnBorder
+import androidx.compose.ui.unit.sp
+import com.dondone.mobile.app.session.RemittanceActionUiState
+import com.dondone.mobile.app.session.RemittanceSubmittingAction
 import com.dondone.mobile.core.designsystem.DawnPrimary
-import com.dondone.mobile.core.designsystem.DawnSurface
+import com.dondone.mobile.core.designsystem.DawnText
 import com.dondone.mobile.core.designsystem.DawnTextSubtle
+import com.dondone.mobile.core.i18n.LocalAppLanguage
+import com.dondone.mobile.core.i18n.text
+import com.dondone.mobile.core.i18n.translate
+import com.dondone.mobile.feature.recipient.presentation.RecipientWalletAddBottomSheet
+import com.dondone.mobile.feature.recipient.presentation.resolveRecipientSheetErrorMessage
+import com.dondone.mobile.feature.recipient.presentation.shouldCloseRecipientSheetAfterResult
+import kotlin.math.absoluteValue
+
+private val AccountManageCanvas = Color.White
+private val AccountManageDivider = Color(0xFFE8EBF0)
+private val AccountManageButtonSurface = Color(0xFFF2F4F7)
+private val AccountManageButtonText = Color(0xFF646F7C)
+private val AccountManageSummaryLabel = Color(0xFF9098A4)
+private val AccountManageAccentSurface = Color(0xFFE9F2FF)
+private val AccountManageInputBorder = Color(0xFFD9E1EA)
+private val AccountManageError = Color(0xFFC93C37)
+private val AccountManageSuccessSurface = Color(0xFFF5F8FC)
+private val AccountManagePalette = listOf(
+    Color(0xFF1376D3),
+    Color(0xFF0E9B7D),
+    Color(0xFF0D4A94),
+    Color(0xFFF5B313),
+    Color(0xFFFFCC00),
+    Color(0xFFA9CFFF),
+    Color(0xFF2563EB)
+)
+private val RecipientRelationOptions = listOf(
+    "FAMILY" to "가족",
+    "SPOUSE" to "배우자",
+    "PARENT" to "부모",
+    "CHILD" to "자녀",
+    "SIBLING" to "형제자매",
+    "FRIEND" to "친구",
+    "OTHER" to "기타"
+)
+
+private enum class RecipientWalletSheetMode {
+    ADD,
+    EDIT
+}
 
 @Composable
 fun AccountManageScreen(
     uiModel: AccountManageUiModel,
-    onSelectAccount: (String) -> Unit
+    actionUiState: RemittanceActionUiState,
+    onOpenTransactionHistory: (String) -> Unit,
+    onAddRecipient: (String, String, String, Long?) -> Unit,
+    onUpdateRecipient: (String, String, String, String) -> Unit,
+    onSearchRecipientsByPhone: (String) -> Unit,
+    onClearPhoneSearch: () -> Unit
 ) {
+    val language = LocalAppLanguage.current
+    var activeSheetMode by remember { mutableStateOf<RecipientWalletSheetMode?>(null) }
+    var editingRecipientId by remember { mutableStateOf<String?>(null) }
+    var awaitingSubmissionAction by remember { mutableStateOf<RemittanceSubmittingAction?>(null) }
+    val editingRecipient = remember(uiModel.recipientWallets, editingRecipientId) {
+        uiModel.recipientWallets.firstOrNull { it.id == editingRecipientId }
+    }
+    val isRecipientSubmitting = actionUiState.isSubmitting && (
+        actionUiState.submittingAction == RemittanceSubmittingAction.RECIPIENT_CREATE ||
+            actionUiState.submittingAction == RemittanceSubmittingAction.RECIPIENT_UPDATE
+    )
+    val sheetErrorMessage = resolveRecipientSheetErrorMessage(
+        isAwaitingResult = awaitingSubmissionAction != null,
+        actionUiState = actionUiState
+    )
+
+    LaunchedEffect(awaitingSubmissionAction, actionUiState.isSubmitting, actionUiState.message, actionUiState.isError) {
+        if (!shouldCloseRecipientSheetAfterResult(awaitingSubmissionAction != null, actionUiState)) {
+            return@LaunchedEffect
+        }
+        onClearPhoneSearch()
+        activeSheetMode = null
+        editingRecipientId = null
+        awaitingSubmissionAction = null
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(AccountManageCanvas)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = 20.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
+        AccountSummary(
+            label = uiModel.totalBalanceLabel,
+            amount = uiModel.totalBalanceAmountText,
+            unit = uiModel.totalBalanceUnitText
+        )
+
+        Spacer(modifier = Modifier.height(28.dp))
+
         ManageSection(
-            title = "내 계좌",
-            actionText = "계좌 추가"
+            title = uiModel.accountSectionTitle,
+            actionText = uiModel.accountActionText
         ) {
-            uiModel.accounts.forEach { account ->
+            uiModel.accounts.forEachIndexed { index, account ->
                 ManageRow(
                     title = account.name,
-                    subtitle = "${account.number} · ${account.balanceText}",
-                    selected = account.selected,
-                    onClick = { onSelectAccount(account.id) }
+                    subtitle = account.number,
+                    valueText = account.balanceText,
+                    actionText = if (account.selected) language.text("primary") else language.text("select"),
+                    copyText = account.copyNumber,
+                    onClick = { onOpenTransactionHistory(account.id) }
                 )
+                if (index != uiModel.accounts.lastIndex) {
+                    HorizontalDivider(color = AccountManageDivider)
+                }
             }
         }
 
+        ManageSectionDivider()
+
         ManageSection(
-            title = "수신 지갑",
-            actionText = "지갑 추가"
+            title = uiModel.recipientSectionTitle,
+            actionText = uiModel.recipientActionText,
+            onActionClick = {
+                awaitingSubmissionAction = null
+                editingRecipientId = null
+                activeSheetMode = RecipientWalletSheetMode.ADD
+            }
         ) {
-            uiModel.recipientWallets.forEach { wallet ->
-                ManageRow(
-                    title = wallet.name,
-                    subtitle = wallet.address,
-                    selected = wallet.selected,
-                    onClick = {}
+            if (uiModel.recipientWallets.isEmpty()) {
+                EmptyRecipientState(
+                    onAddWallet = {
+                        awaitingSubmissionAction = null
+                        editingRecipientId = null
+                        activeSheetMode = RecipientWalletSheetMode.ADD
+                    }
                 )
+            } else {
+                uiModel.recipientWallets.forEachIndexed { index, wallet ->
+                    ManageRow(
+                        title = wallet.name,
+                        subtitle = "${wallet.relationLabel} · ${wallet.address.toShortWalletAddress()}",
+                        valueText = if (wallet.selected) language.text("primary") else null,
+                        actionText = language.text("edit"),
+                        copyText = wallet.address,
+                        onClick = {
+                            awaitingSubmissionAction = null
+                            editingRecipientId = wallet.id
+                            activeSheetMode = RecipientWalletSheetMode.EDIT
+                        }
+                    )
+                    if (index != uiModel.recipientWallets.lastIndex) {
+                        HorizontalDivider(color = AccountManageDivider)
+                    }
+                }
             }
         }
+
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+
+    if (activeSheetMode == RecipientWalletSheetMode.ADD) {
+        RecipientWalletAddBottomSheet(
+            phoneDirectory = uiModel.phoneDirectory,
+            supportsRemotePhoneSearch = uiModel.supportsRemotePhoneSearch,
+            phoneSearchResults = uiModel.phoneSearchResults,
+            isPhoneSearchLoading = uiModel.isPhoneSearchLoading,
+            phoneSearchErrorMessage = uiModel.phoneSearchErrorMessage,
+            isSubmitting = isRecipientSubmitting,
+            submitErrorMessage = sheetErrorMessage,
+            onDismiss = {
+                if (!isRecipientSubmitting) {
+                    onClearPhoneSearch()
+                    activeSheetMode = null
+                    editingRecipientId = null
+                    awaitingSubmissionAction = null
+                }
+            },
+            onSubmit = { alias, relation, walletAddress, targetUserId ->
+                awaitingSubmissionAction = RemittanceSubmittingAction.RECIPIENT_CREATE
+                onAddRecipient(alias, relation, walletAddress, targetUserId)
+            },
+            onSearchByPhone = onSearchRecipientsByPhone,
+            onClearPhoneSearch = onClearPhoneSearch
+        )
+    }
+
+    if (activeSheetMode == RecipientWalletSheetMode.EDIT && editingRecipient != null) {
+        EditRecipientWalletBottomSheet(
+            recipient = editingRecipient,
+            isSubmitting = isRecipientSubmitting,
+            submitErrorMessage = sheetErrorMessage,
+            onDismiss = {
+                if (!isRecipientSubmitting) {
+                    activeSheetMode = null
+                    editingRecipientId = null
+                    awaitingSubmissionAction = null
+                }
+            },
+            onSubmit = { alias, relation, walletAddress ->
+                awaitingSubmissionAction = RemittanceSubmittingAction.RECIPIENT_UPDATE
+                onUpdateRecipient(editingRecipient.id, alias, relation, walletAddress)
+            }
+        )
+    }
+}
+
+@Composable
+private fun AccountSummary(
+    label: String,
+    amount: String,
+    unit: String?
+) {
+    val language = LocalAppLanguage.current
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = language.translate(label),
+            style = MaterialTheme.typography.bodyMedium,
+            color = AccountManageSummaryLabel
+        )
+        Text(
+            text = buildAnnotatedString {
+                append(amount)
+                unit?.let {
+                    append(" ")
+                    withStyle(SpanStyle(fontWeight = FontWeight.Black, fontSize = 22.sp)) {
+                        append(it)
+                    }
+                }
+            },
+            style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Black),
+            color = DawnText
+        )
     }
 }
 
 @Composable
 private fun ManageSection(
     title: String,
-    actionText: String,
-    content: @Composable () -> Unit
+    actionText: String?,
+    onActionClick: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit
 ) {
+    val language = LocalAppLanguage.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White, RoundedCornerShape(28.dp))
-            .border(1.dp, DawnBorder, RoundedCornerShape(28.dp))
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                color = DawnTextSubtle
+                text = language.translate(title),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = DawnText
             )
+            if (actionText != null) {
+                Text(
+                    modifier = if (onActionClick != null) Modifier.clickable(onClick = onActionClick) else Modifier,
+                    text = language.translate(actionText),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (onActionClick != null) DawnPrimary else DawnTextSubtle
+                )
+            }
+        }
+        content()
+    }
+}
+
+@Composable
+private fun ManageSectionDivider() {
+    Spacer(modifier = Modifier.height(20.dp))
+    HorizontalDivider(color = AccountManageDivider)
+    Spacer(modifier = Modifier.height(20.dp))
+}
+
+@Composable
+private fun EmptyRecipientState(
+    onAddWallet: () -> Unit
+) {
+    val language = LocalAppLanguage.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AccountManageSuccessSurface, RoundedCornerShape(18.dp))
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = language.text("no_recipient_wallet_registered"),
+            style = MaterialTheme.typography.bodyMedium,
+            color = DawnText
+        )
+        Text(
+            text = language.text("add_recipient_wallet_helper"),
+            style = MaterialTheme.typography.bodySmall,
+            color = AccountManageSummaryLabel
+        )
+        Box(
+            modifier = Modifier
+                .background(AccountManageAccentSurface, RoundedCornerShape(12.dp))
+                .clickable(onClick = onAddWallet)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center
+        ) {
             Text(
-                text = actionText,
-                style = MaterialTheme.typography.labelLarge,
+                text = language.text("add_wallet"),
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
                 color = DawnPrimary
             )
         }
-        content()
     }
 }
 
@@ -102,33 +372,340 @@ private fun ManageSection(
 private fun ManageRow(
     title: String,
     subtitle: String,
-    selected: Boolean,
+    valueText: String?,
+    actionText: String?,
+    copyText: String?,
     onClick: () -> Unit
 ) {
+    val language = LocalAppLanguage.current
+    val context = LocalContext.current
+    val clipboardManager = remember(context) {
+        context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    }
+    val translatedSubtitle = remember(subtitle, language) {
+        val parts = subtitle.split(" · ", limit = 2)
+        if (parts.size == 2) {
+            "${language.translate(parts[0])} · ${parts[1]}"
+        } else {
+            language.translate(subtitle)
+        }
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(DawnSurface, RoundedCornerShape(22.dp))
-            .border(
-                width = 1.dp,
-                color = if (selected) DawnPrimary.copy(alpha = 0.7f) else DawnBorder,
-                shape = RoundedCornerShape(22.dp)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = copyText?.let {
+                    {
+                        clipboardManager.setPrimaryClip(ClipData.newPlainText("wallet_address", it))
+                        Toast.makeText(context, language.text("wallet_address_copied"), Toast.LENGTH_SHORT).show()
+                    }
+                }
             )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 15.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AccountBadge(title = title)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AccountManageSummaryLabel,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (valueText != null) {
+                    Text(
+                        text = language.translate(valueText),
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = DawnText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    text = translatedSubtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = DawnTextSubtle,
+                    overflow = TextOverflow.Clip
+                )
+            }
+        }
+        if (actionText != null) {
+            Box(
+                modifier = Modifier
+                    .defaultMinSize(minWidth = 0.dp, minHeight = 0.dp)
+                    .background(AccountManageButtonSurface, RoundedCornerShape(8.dp))
+                    .combinedClickable(onClick = onClick)
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = language.translate(actionText),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = AccountManageButtonText
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AccountBadge(title: String) {
+    val color = AccountManagePalette[title.hashCode().absoluteValue % AccountManagePalette.size]
+    val badgeText = title.trim().take(1).ifBlank { "?" }
+
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .background(color = color, shape = RoundedCornerShape(999.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = badgeText,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+            color = Color.White
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditRecipientWalletBottomSheet(
+    recipient: RecipientWalletUiModel,
+    isSubmitting: Boolean,
+    submitErrorMessage: String?,
+    onDismiss: () -> Unit,
+    onSubmit: (String, String, String) -> Unit
+) {
+    val language = LocalAppLanguage.current
+    var alias by remember(recipient.id) { mutableStateOf(recipient.name) }
+    var walletAddress by remember(recipient.id) { mutableStateOf(recipient.address) }
+    var relation by remember(recipient.id) { mutableStateOf(recipient.relationCode) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val trimmedAlias = alias.trim()
+    val trimmedWalletAddress = walletAddress.trim()
+    val addressValid = remember(trimmedWalletAddress) { trimmedWalletAddress.isLikelyWalletAddress() }
+    val hasChanges = trimmedAlias != recipient.name ||
+        trimmedWalletAddress != recipient.address ||
+        relation != recipient.relationCode
+    val canSubmit = !isSubmitting && trimmedAlias.isNotBlank() && addressValid && hasChanges
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.White,
+        scrimColor = Color.Black.copy(alpha = 0.32f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                color = if (selected) DawnPrimary else MaterialTheme.colorScheme.onSurface
+                text = language.text("edit_recipient_wallet"),
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
+                color = DawnText
             )
             Text(
-                text = subtitle,
+                text = language.text("edit_recipient_wallet_helper"),
                 style = MaterialTheme.typography.bodyMedium,
                 color = DawnTextSubtle
             )
+
+            ManualAddressForm(
+                alias = alias,
+                onAliasChange = { alias = it },
+                walletAddress = walletAddress,
+                onWalletAddressChange = { walletAddress = it }
+            )
+
+            RelationSelector(
+                selectedRelation = relation,
+                onSelectRelation = { relation = it }
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(AccountManageSuccessSurface, RoundedCornerShape(18.dp))
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = language.text("notice"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AccountManageSummaryLabel
+                    )
+                    Text(
+                        text = language.text("change_visible_next_transfer"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = DawnTextSubtle
+                    )
+                }
+            }
+
+            if (submitErrorMessage != null) {
+                Text(
+                    text = submitErrorMessage,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AccountManageError
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        if (canSubmit) DawnPrimary else AccountManageInputBorder,
+                        RoundedCornerShape(18.dp)
+                    )
+                    .clickable(enabled = canSubmit) {
+                        onSubmit(trimmedAlias, relation, trimmedWalletAddress)
+                    }
+                    .padding(vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isSubmitting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                } else {
+                    Text(
+                        text = language.text("save_changes"),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                        color = if (canSubmit) Color.White else AccountManageButtonText
+                    )
+                }
+            }
+
+            Text(
+                text = language.text("transfer_demo_notice"),
+                style = MaterialTheme.typography.bodySmall,
+                color = AccountManageSummaryLabel
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
+}
+
+@Composable
+private fun ManualAddressForm(
+    alias: String,
+    onAliasChange: (String) -> Unit,
+    walletAddress: String,
+    onWalletAddressChange: (String) -> Unit
+) {
+    val language = LocalAppLanguage.current
+    val addressValid = walletAddress.trim().isLikelyWalletAddress()
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        OutlinedTextField(
+            modifier = Modifier.fillMaxWidth(),
+            value = alias,
+            onValueChange = onAliasChange,
+            singleLine = true,
+            label = { Text(language.text("alias")) },
+            shape = RoundedCornerShape(16.dp)
+        )
+        OutlinedTextField(
+            modifier = Modifier.fillMaxWidth(),
+            value = walletAddress,
+            onValueChange = onWalletAddressChange,
+            singleLine = true,
+            label = { Text(language.text("wallet_address")) },
+            placeholder = { Text("0x...") },
+            supportingText = {
+                Text(
+                    text = if (walletAddress.isBlank() || addressValid) {
+                        language.text("enter_testnet_evm_wallet_address")
+                    } else {
+                        language.text("wallet_address_length_error")
+                    },
+                    color = if (walletAddress.isBlank() || addressValid) AccountManageSummaryLabel else AccountManageError
+                )
+            },
+            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+}
+
+@Composable
+private fun RelationSelector(
+    selectedRelation: String,
+    onSelectRelation: (String) -> Unit
+) {
+    val language = LocalAppLanguage.current
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = language.text("relationship"),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
+            color = DawnText
+        )
+        RecipientRelationOptions.chunked(2).forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                row.forEach { (code, label) ->
+                    val selected = selectedRelation == code
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(
+                                if (selected) AccountManageAccentSurface else Color.White,
+                                RoundedCornerShape(14.dp)
+                            )
+                            .border(
+                                1.dp,
+                                if (selected) DawnPrimary else AccountManageInputBorder,
+                                RoundedCornerShape(14.dp)
+                            )
+                            .clickable { onSelectRelation(code) }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = language.translate(label),
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
+                            color = if (selected) DawnPrimary else DawnTextSubtle
+                        )
+                    }
+                }
+                if (row.size == 1) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+private fun String.toShortWalletAddress(): String {
+    return if (length <= 14) {
+        this
+    } else {
+        "${take(8)}...${takeLast(6)}"
+    }
+}
+
+private fun String.isLikelyWalletAddress(): Boolean {
+    return matches(Regex("^0x[a-fA-F0-9]{40}$"))
 }

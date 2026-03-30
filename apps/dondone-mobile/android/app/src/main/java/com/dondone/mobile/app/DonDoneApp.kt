@@ -1,216 +1,395 @@
 package com.dondone.mobile.app
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.WorkHistory
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.dondone.mobile.app.navigation.AppBackAction
 import com.dondone.mobile.app.navigation.DonDoneNavGraph
 import com.dondone.mobile.app.navigation.Route
-import com.dondone.mobile.app.navigation.mainTabs
+import com.dondone.mobile.app.navigation.navigateToRootTab
+import com.dondone.mobile.app.navigation.resolveAppBackAction
 import com.dondone.mobile.app.navigation.resolveScreenChrome
+import com.dondone.mobile.app.navigation.shouldResetWorkproofUiState
+import com.dondone.mobile.app.navigation.showTransferStep
 import com.dondone.mobile.app.session.DemoSessionViewModel
-import com.dondone.mobile.core.designsystem.DawnBackground
-import com.dondone.mobile.core.designsystem.DawnBorder
-import com.dondone.mobile.core.designsystem.DawnPrimary
-import com.dondone.mobile.core.designsystem.DawnSecondary
+import com.dondone.mobile.core.designsystem.BadgeTone
 import com.dondone.mobile.core.designsystem.DawnSurface
 import com.dondone.mobile.core.designsystem.DawnTextSubtle
+import com.dondone.mobile.core.designsystem.DawnWarning
+import com.dondone.mobile.core.designsystem.DonDoneToastHost
+import com.dondone.mobile.core.designsystem.PrimaryActionButton
+import com.dondone.mobile.core.designsystem.SecondaryActionButton
+import com.dondone.mobile.core.designsystem.rememberDonDoneToastState
+import com.dondone.mobile.core.i18n.AppLanguage
+import com.dondone.mobile.core.i18n.AppTextKeys
+import com.dondone.mobile.core.i18n.ProvideAppLanguage
+import com.dondone.mobile.core.i18n.text
+import com.dondone.mobile.domain.model.DemoInfo
+import com.dondone.mobile.feature.auth.presentation.LoginLoadingScreen
+import com.dondone.mobile.feature.auth.presentation.LoginScreen
+
+private const val WORKER_REGISTRATION_CODE_MAX_LENGTH = 32
+private const val WORKER_REGISTRATION_CODE_MIN_LENGTH = 8
 
 @Composable
 fun DonDoneApp(
     viewModel: DemoSessionViewModel
 ) {
-    val navController = rememberNavController()
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentDestination = navBackStackEntry?.destination
-    val currentRoute = currentDestination?.route.orEmpty()
-    val chrome = resolveScreenChrome(currentRoute, uiState.remittance.flowStep)
+    val appLanguage by viewModel.appLanguage.collectAsStateWithLifecycle()
+    val authUiState by viewModel.authUiState.collectAsStateWithLifecycle()
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = DawnBackground,
-        topBar = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(DawnBackground)
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (chrome.showRootTabs) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = chrome.title,
-                                style = MaterialTheme.typography.headlineSmall
-                            )
-                            Text(
-                                text = "${uiState.demo.year}.${uiState.demo.month.toString().padStart(2, '0')}.${uiState.demo.asOfDay.toString().padStart(2, '0')}",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = DawnTextSubtle
-                            )
-                        }
-                        if (chrome.showSettingsAction) {
-                            IconButton(onClick = { navController.navigate(Route.MENU) }) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = "설정",
-                                    tint = DawnTextSubtle
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(DawnSurface)
-                                .border(1.dp, DawnBorder, RoundedCornerShape(16.dp))
-                                .clickable { navController.navigateUp() }
-                                .padding(horizontal = 12.dp, vertical = 10.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "뒤로",
-                                tint = DawnTextSubtle
-                            )
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = chrome.title, style = MaterialTheme.typography.titleLarge)
-                            Text(
-                                text = "${uiState.demo.year}.${uiState.demo.month.toString().padStart(2, '0')}.${uiState.demo.asOfDay.toString().padStart(2, '0')}",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = DawnTextSubtle
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        bottomBar = {
-            if (chrome.showRootTabs) {
-                Surface(
-                    modifier = Modifier
-                        .navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    color = DawnSurface,
-                    shadowElevation = 14.dp
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        mainTabs.forEach { tab ->
-                            val selected = currentDestination
-                                ?.hierarchy
-                                ?.any { destination ->
-                                    destination.route == tab.rootRoute || currentRoute.startsWith(tab.rootRoute)
-                                } == true
-
-                            val icon = when (tab.rootRoute) {
-                                Route.HOME -> Icons.Default.Home
-                                Route.FINANCE_HOME -> Icons.Default.AccountBalanceWallet
-                                Route.WORKPROOF -> Icons.Default.WorkHistory
-                                else -> Icons.Default.Description
-                            }
-
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .background(if (selected) DawnSecondary else Color.Transparent)
-                                    .border(
-                                        width = if (selected) 1.dp else 0.dp,
-                                        color = if (selected) DawnBorder else Color.Transparent,
-                                        shape = RoundedCornerShape(20.dp)
-                                    )
-                                    .clickable {
-                                        navController.navigate(tab.rootRoute) {
-                                            popUpTo(navController.graph.findStartDestination().id) {
-                                                saveState = true
-                                            }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
-                                    }
-                                    .padding(vertical = 10.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = icon,
-                                    contentDescription = tab.label,
-                                    tint = if (selected) DawnPrimary else DawnTextSubtle
-                                )
-                                Text(
-                                    text = tab.label,
-                                    color = if (selected) DawnPrimary else DawnTextSubtle,
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+    ProvideAppLanguage(language = appLanguage) {
+        if (authUiState.isRestoring) {
+            LoginLoadingScreen()
+            return@ProvideAppLanguage
         }
-    ) { innerPadding: PaddingValues ->
-        DonDoneNavGraph(
-            modifier = Modifier.padding(
-                top = innerPadding.calculateTopPadding(),
-                bottom = innerPadding.calculateBottomPadding()
-            ),
-            navController = navController,
-            viewModel = viewModel
+
+        if (!authUiState.isAuthenticated) {
+            LoginScreen(
+                uiState = authUiState,
+                onLogin = viewModel::login,
+                onSignup = viewModel::signup,
+                onFieldEdited = viewModel::clearAuthError
+            )
+            return@ProvideAppLanguage
+        }
+
+        AuthenticatedDonDoneAppShell(
+            viewModel = viewModel,
+            appLanguage = appLanguage
         )
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AuthenticatedDonDoneAppShell(
+    viewModel: DemoSessionViewModel,
+    appLanguage: AppLanguage
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val authUiState by viewModel.authUiState.collectAsStateWithLifecycle()
+    val remittanceActionUiState by viewModel.remittanceActionUiState.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val workerRegistrationCodeUiState by viewModel.workerRegistrationCodeUiState.collectAsStateWithLifecycle()
+    val toastState = rememberDonDoneToastState()
+    val navController = rememberNavController()
+    val currentDestination = navController.currentBackStackEntryAsState().value?.destination
+    val currentRoute = currentDestination?.route.orEmpty()
+    val remittance = uiState.remittance
+    val workproofShellState = rememberWorkproofShellState(currentRoute)
+    var isWorkerRegistrationSheetVisible by rememberSaveable { mutableStateOf(false) }
+    var workerRegistrationCodeInput by rememberSaveable { mutableStateOf("") }
+    val workerRegistrationCodeValidationMessage =
+        workerRegistrationCodeValidationMessage(workerRegistrationCodeInput, appLanguage)
+    val isWorkerRegistrationSavable =
+        workerRegistrationCodeInput.isNotBlank() && workerRegistrationCodeValidationMessage == null
+
+    val chrome = resolveScreenChrome(
+        route = currentRoute,
+        transferStep = remittance.flowStep,
+        transferStatus = remittance.status,
+        isWorkproofDetailVisible = workproofShellState.isDetailVisible,
+        language = appLanguage
+    )
+    val topBarState = resolveAppTopBarState(
+        currentRoute = currentRoute,
+        showRootTabs = chrome.showRootTabs,
+        showSettingsAction = chrome.showSettingsAction,
+        headerTitle = chrome.headerTitle,
+        headerDateText = uiState.demo.toHeaderDateTextOrNull(showDate = chrome.showDate)
+    )
+    val rootTabs = currentDestination.toRootTabUiStates(
+        currentRoute = currentRoute,
+        language = appLanguage
+    )
+
+    fun handleBack() {
+        when (
+            val action = resolveAppBackAction(
+                currentRoute = currentRoute,
+                remittance = remittance,
+                isRemittanceSubmitting = remittanceActionUiState.isSubmitting,
+                remittanceSubmittingAction = remittanceActionUiState.submittingAction
+            )
+        ) {
+            AppBackAction.NavigateUp -> navController.navigateUp()
+            AppBackAction.DismissTransferConfirmation -> {
+                viewModel.dismissTransferConfirmation()
+            }
+
+            AppBackAction.Ignore -> Unit
+
+            is AppBackAction.ShowTransferStep -> {
+                viewModel.showTransferStep(action.step)
+            }
+        }
+    }
+
+    BackHandler(
+        enabled = currentRoute == Route.TRANSFER,
+        onBack = ::handleBack
+    )
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshRemittanceRemoteStateSilentlyIfAuthenticated()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    LaunchedEffect(workerRegistrationCodeUiState.message, workerRegistrationCodeUiState.isError) {
+        val message = workerRegistrationCodeUiState.message ?: return@LaunchedEffect
+        toastState.show(
+            message = message,
+            tone = if (workerRegistrationCodeUiState.isError) BadgeTone.Warning else BadgeTone.Success
+        )
+        if (!workerRegistrationCodeUiState.isError) {
+            workerRegistrationCodeInput = ""
+            isWorkerRegistrationSheetVisible = false
+        }
+        viewModel.clearWorkerRegistrationCodeMessage()
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = ChromeSurface,
+            topBar = {
+                AppTopBar(
+                    state = topBarState,
+                    onBack = ::handleBack,
+                    onMenuClick = {
+                        workerRegistrationCodeInput = ""
+                        isWorkerRegistrationSheetVisible = true
+                    }
+                )
+            },
+            bottomBar = {
+                RootBottomBar(
+                    visible = chrome.showRootTabs,
+                    tabs = rootTabs,
+                    onTabClick = { route -> navController.navigateToRootTab(route) }
+                )
+            }
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                DonDoneNavGraph(
+                    modifier = Modifier.fillMaxSize(),
+                    navController = navController,
+                    viewModel = viewModel,
+                    appLanguage = appLanguage,
+                    workproofResetVersion = workproofShellState.resetVersion,
+                    onNavigateToRootTab = { route -> navController.navigateToRootTab(route) },
+                    onWorkproofDetailVisibilityChange = workproofShellState.onDetailVisibilityChange,
+                    onOpenWorkerRegistrationCode = {
+                        workerRegistrationCodeInput = ""
+                        isWorkerRegistrationSheetVisible = true
+                    },
+                    onShowToast = { message, tone ->
+                        toastState.show(message = message, tone = tone)
+                    }
+                )
+
+                DonDoneToastHost(
+                    state = toastState,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                )
+            }
+        }
+
+        if (isWorkerRegistrationSheetVisible) {
+            WorkerRegistrationCodeSheet(
+                appLanguage = appLanguage,
+                registrationCode = workerRegistrationCodeInput,
+                validationMessage = workerRegistrationCodeValidationMessage,
+                onRegistrationCodeChange = { nextValue ->
+                    workerRegistrationCodeInput = normalizeWorkerRegistrationCodeInput(nextValue)
+                },
+                isSubmitting = workerRegistrationCodeUiState.isSubmitting,
+                isSaveEnabled = isWorkerRegistrationSavable,
+                onDismiss = {
+                    if (!workerRegistrationCodeUiState.isSubmitting) {
+                        isWorkerRegistrationSheetVisible = false
+                        viewModel.clearWorkerRegistrationCodeMessage()
+                    }
+                },
+                onSave = {
+                    viewModel.redeemWorkerRegistrationCode(workerRegistrationCodeInput)
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WorkerRegistrationCodeSheet(
+    appLanguage: AppLanguage,
+    registrationCode: String,
+    validationMessage: String?,
+    onRegistrationCodeChange: (String) -> Unit,
+    isSubmitting: Boolean,
+    isSaveEnabled: Boolean,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = DawnSurface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+        ) {
+            Text(
+                text = appLanguage.text(AppTextKeys.ENTER_WORKER_REGISTRATION_CODE),
+                style = MaterialTheme.typography.headlineSmall
+            )
+            OutlinedTextField(
+                value = registrationCode,
+                onValueChange = onRegistrationCodeChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 20.dp),
+                singleLine = true,
+                isError = validationMessage != null,
+                label = { Text(appLanguage.text(AppTextKeys.REGISTRATION_CODE)) },
+                placeholder = { Text(appLanguage.text(AppTextKeys.EXAMPLE_WORKER_CODE)) },
+                supportingText = {
+                    Text(
+                        text = validationMessage ?: appLanguage.text(AppTextKeys.REGISTRATION_ALLOWED_CHARACTERS),
+                        color = if (validationMessage != null) DawnWarning else DawnTextSubtle
+                    )
+                }
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp, bottom = 12.dp)
+            ) {
+                SecondaryActionButton(
+                    text = appLanguage.text(AppTextKeys.CLOSE),
+                    onClick = onDismiss,
+                    enabled = !isSubmitting,
+                    modifier = Modifier.weight(1f)
+                )
+                PrimaryActionButton(
+                    text = if (isSubmitting) {
+                        appLanguage.text(AppTextKeys.REGISTERING)
+                    } else {
+                        appLanguage.text(AppTextKeys.REGISTER)
+                    },
+                    onClick = onSave,
+                    enabled = !isSubmitting && isSaveEnabled,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 12.dp)
+                )
+            }
+        }
+    }
+}
+
+internal fun normalizeWorkerRegistrationCodeInput(
+    rawValue: String
+): String {
+    return rawValue
+        .uppercase()
+        .take(WORKER_REGISTRATION_CODE_MAX_LENGTH)
+}
+
+internal fun workerRegistrationCodeValidationMessage(
+    registrationCode: String,
+    language: AppLanguage = AppLanguage.KOREAN
+): String? {
+    if (registrationCode.isBlank()) {
+        return null
+    }
+    if (registrationCode.any { !it.isDigit() && it !in 'A'..'Z' && it != '-' }) {
+        return language.text(AppTextKeys.REGISTRATION_ALLOWED_CHARACTERS)
+    }
+    if (registrationCode.length < WORKER_REGISTRATION_CODE_MIN_LENGTH) {
+        return language.text(AppTextKeys.REGISTRATION_CODE_MIN)
+    }
+    if (registrationCode.length > WORKER_REGISTRATION_CODE_MAX_LENGTH) {
+        return language.text(AppTextKeys.REGISTRATION_CODE_MAX)
+    }
+    return null
+}
+
+@Composable
+private fun rememberWorkproofShellState(
+    currentRoute: String
+): WorkproofShellState {
+    var isDetailVisible by rememberSaveable { mutableStateOf(false) }
+    var resetVersion by rememberSaveable { mutableStateOf(0) }
+    var previousRoute by rememberSaveable { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(currentRoute) {
+        if (shouldResetWorkproofUiState(previousRoute, currentRoute)) {
+            isDetailVisible = false
+            resetVersion += 1
+        }
+        previousRoute = currentRoute
+    }
+
+    return WorkproofShellState(
+        isDetailVisible = isDetailVisible,
+        resetVersion = resetVersion,
+        onDetailVisibilityChange = { visible ->
+            isDetailVisible = visible
+        }
+    )
+}
+
+private fun DemoInfo.toHeaderDateTextOrNull(showDate: Boolean): String? {
+    if (!showDate) {
+        return null
+    }
+
+    return "$year.${month.toString().padStart(2, '0')}.${asOfDay.toString().padStart(2, '0')}"
+}
+
+private data class WorkproofShellState(
+    val isDetailVisible: Boolean,
+    val resetVersion: Int,
+    val onDetailVisibilityChange: (Boolean) -> Unit
+)

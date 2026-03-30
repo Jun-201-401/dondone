@@ -15,16 +15,25 @@ public record LoginResponse(
         @Schema(description = "Authenticated user email", example = "test@gmail.com")
         String email,
         @Schema(description = "Authenticated user display name", example = "Test User")
-        String name
+        String name,
+        @Schema(description = "Authenticated user phone number", example = "01012345678")
+        String phoneNumber,
+        @Schema(description = "Authenticated user company code", example = "DONDONE2026")
+        String companyCode,
+        @Schema(description = "Authenticated user company name when a current worker membership exists", example = "Acme Logistics")
+        String companyName
 ) {
-    public static LoginResponse of(String accessToken, long expiresIn, User user) {
+    public static LoginResponse of(String accessToken, long expiresIn, User user, String companyCode, String companyName) {
         return new LoginResponse(
                 accessToken,
                 "Bearer",
                 expiresIn,
                 user.getId(),
                 user.getEmail(),
-                user.getName()
+                user.getName(),
+                user.getPhoneNumber(),
+                companyCode,
+                companyName
         );
     }
 }

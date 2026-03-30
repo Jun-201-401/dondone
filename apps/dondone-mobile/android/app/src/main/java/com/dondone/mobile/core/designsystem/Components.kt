@@ -3,6 +3,10 @@ package com.dondone.mobile.core.designsystem
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.InteractionSource
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,20 +18,91 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+
+private val DonDoneGrayRipple = Color(0x1F4E5968)
+private const val DonDoneToastDurationMillis = 2200L
+
+@Suppress("UNUSED_PARAMETER")
+fun Modifier.pressableScale(
+    interactionSource: InteractionSource,
+    enabled: Boolean = true,
+    pressedScale: Float = 0.97f
+): Modifier = this
+
+fun rememberDonDoneGrayRipple(
+    bounded: Boolean = true,
+    radius: Dp = Dp.Unspecified
+) = ripple(
+    bounded = bounded,
+    radius = radius,
+    color = DonDoneGrayRipple
+)
+
+@Composable
+fun DonDoneWordmark(
+    modifier: Modifier = Modifier
+) {
+    val logoText = buildAnnotatedString {
+        withStyle(SpanStyle(brush = Brush.linearGradient(colors = DawnLogoGradient))) {
+            append("Don")
+        }
+        withStyle(SpanStyle(color = DawnText)) {
+            append("Done")
+        }
+    }
+
+    Text(
+        text = logoText,
+        modifier = modifier,
+        style = MaterialTheme.typography.headlineSmall.copy(
+            fontWeight = FontWeight.Black,
+            letterSpacing = (-0.72).sp,
+            shadow = Shadow(
+                color = Color(0x33171E5F),
+                offset = Offset(0f, 10f),
+                blurRadius = 24f
+            )
+        ),
+        maxLines = 1
+    )
+}
 
 @Composable
 fun DonDoneCard(
@@ -140,6 +215,265 @@ fun StatusBadge(text: String, tone: BadgeTone) {
     }
 }
 
+internal data class DonDoneToastVisual(
+    val id: Long,
+    val message: String,
+    val tone: BadgeTone
+)
+
+class DonDoneToastState {
+    internal var current by mutableStateOf<DonDoneToastVisual?>(null)
+        private set
+
+    fun show(
+        message: String,
+        tone: BadgeTone = BadgeTone.Info
+    ) {
+        current = DonDoneToastVisual(
+            id = System.currentTimeMillis(),
+            message = message,
+            tone = tone
+        )
+    }
+
+    fun dismiss() {
+        current = null
+    }
+}
+
+@Composable
+fun rememberDonDoneToastState(): DonDoneToastState = remember { DonDoneToastState() }
+
+@Composable
+fun DonDoneToastHost(
+    state: DonDoneToastState,
+    modifier: Modifier = Modifier
+) {
+    val current = state.current ?: return
+
+    LaunchedEffect(current.id) {
+        delay(DonDoneToastDurationMillis)
+        state.dismiss()
+    }
+
+    Box(
+        modifier = modifier.fillMaxWidth(),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        val background = when (current.tone) {
+            BadgeTone.Info -> DawnSurface
+            BadgeTone.Success -> Color(0xFFF2F6F0)
+            BadgeTone.Warning -> Color(0xFFFAF4EC)
+        }
+        val foreground = when (current.tone) {
+            BadgeTone.Info -> DawnText
+            BadgeTone.Success -> Color(0xFF4D6456)
+            BadgeTone.Warning -> Color(0xFF8B6B43)
+        }
+        val border = when (current.tone) {
+            BadgeTone.Info -> DawnBorder
+            BadgeTone.Success -> Color(0xFFD8E5DB)
+            BadgeTone.Warning -> Color(0xFFE9D9C2)
+        }
+
+        Text(
+            text = current.message,
+            modifier = Modifier
+                .clip(RoundedCornerShape(18.dp))
+                .background(background)
+                .border(BorderStroke(1.dp, border), RoundedCornerShape(18.dp))
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            color = foreground,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
+@Composable
+fun DonDoneNoticeBanner(
+    title: String,
+    message: String,
+    modifier: Modifier = Modifier,
+    tone: BadgeTone = BadgeTone.Info,
+    supportText: String? = null,
+    onDismiss: (() -> Unit)? = null
+) {
+    val leadingIcon = when (tone) {
+        BadgeTone.Success -> Icons.Default.CheckCircle
+        BadgeTone.Warning -> Icons.Default.Close
+        BadgeTone.Info -> Icons.Default.Description
+    }
+    val background = Color(0xFFF5F6FA)
+    val bodyForeground = DawnTextSubtle
+    val iconTint = DawnPrimary
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(background)
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.White)
+                .padding(horizontal = 10.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = leadingIcon,
+                contentDescription = null,
+                tint = iconTint
+            )
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                color = DawnText
+            )
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = bodyForeground,
+                maxLines = if (tone == BadgeTone.Warning) 3 else 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            supportText?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = DawnTextSubtle,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        onDismiss?.let { dismiss ->
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "알림 닫기",
+                tint = DawnTextSubtle,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White.copy(alpha = 0.74f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = rememberDonDoneGrayRipple()
+                    ) { dismiss() }
+                    .padding(5.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun FeedbackPanel(
+    title: String,
+    message: String,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+    tone: BadgeTone = BadgeTone.Info,
+    leading: @Composable (() -> Unit)? = null
+) {
+    val accent = when (tone) {
+        BadgeTone.Info -> DawnPrimaryDeep
+        BadgeTone.Success -> DawnSuccess
+        BadgeTone.Warning -> DawnWarning
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(DawnSurfaceAlt)
+            .border(BorderStroke(1.dp, DawnBorder), RoundedCornerShape(20.dp))
+            .padding(horizontal = 16.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        leading?.invoke()
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Black),
+                color = DawnText
+            )
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = DawnTextSubtle
+            )
+        }
+        if (actionLabel != null && onAction != null) {
+            OutlinedButton(
+                onClick = onAction,
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, accent),
+                colors = ButtonDefaults.outlinedButtonColors(containerColor = DawnSurface)
+            ) {
+                Text(text = actionLabel, color = accent)
+            }
+        }
+    }
+}
+
+@Composable
+fun DonDoneLoadingPanel(
+    title: String,
+    message: String,
+    modifier: Modifier = Modifier
+) {
+    FeedbackPanel(
+        title = title,
+        message = message,
+        modifier = modifier,
+        leading = {
+            CircularProgressIndicator(
+                color = DawnPrimaryDeep,
+                strokeWidth = 2.5.dp
+            )
+        }
+    )
+}
+
+@Composable
+fun DonDoneEmptyPanel(
+    title: String,
+    message: String,
+    modifier: Modifier = Modifier
+) {
+    FeedbackPanel(
+        title = title,
+        message = message,
+        modifier = modifier
+    )
+}
+
+@Composable
+fun DonDoneErrorPanel(
+    title: String,
+    message: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    FeedbackPanel(
+        title = title,
+        message = message,
+        modifier = modifier,
+        actionLabel = actionLabel,
+        onAction = onAction,
+        tone = BadgeTone.Warning
+    )
+}
+
 @Composable
 fun DonDoneProgressBar(progress: Float) {
     Box(
@@ -170,16 +504,27 @@ fun PrimaryActionButton(
     enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    Button(
-        modifier = modifier
-            .defaultMinSize(minHeight = 44.dp)
-            .sizeIn(minWidth = 96.dp),
-        enabled = enabled,
-        onClick = onClick,
-        colors = ButtonDefaults.buttonColors(containerColor = DawnPrimary),
-        shape = RoundedCornerShape(18.dp)
+    val interactionSource = remember { MutableInteractionSource() }
+
+    CompositionLocalProvider(
+        LocalIndication provides rememberDonDoneGrayRipple()
     ) {
-        Text(text = text)
+        Button(
+            modifier = modifier
+                .defaultMinSize(minHeight = 44.dp)
+                .sizeIn(minWidth = 96.dp)
+                .pressableScale(
+                    interactionSource = interactionSource,
+                    enabled = enabled
+                ),
+            enabled = enabled,
+            onClick = onClick,
+            interactionSource = interactionSource,
+            colors = ButtonDefaults.buttonColors(containerColor = DawnPrimary),
+            shape = RoundedCornerShape(18.dp)
+        ) {
+            Text(text = text)
+        }
     }
 }
 
@@ -190,17 +535,28 @@ fun SecondaryActionButton(
     enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    OutlinedButton(
-        modifier = modifier
-            .defaultMinSize(minHeight = 44.dp)
-            .sizeIn(minWidth = 96.dp),
-        enabled = enabled,
-        onClick = onClick,
-        shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, DawnBorder),
-        colors = ButtonDefaults.outlinedButtonColors(containerColor = DawnSurface)
+    val interactionSource = remember { MutableInteractionSource() }
+
+    CompositionLocalProvider(
+        LocalIndication provides rememberDonDoneGrayRipple()
     ) {
-        Text(text = text)
+        OutlinedButton(
+            modifier = modifier
+                .defaultMinSize(minHeight = 44.dp)
+                .sizeIn(minWidth = 96.dp)
+                .pressableScale(
+                    interactionSource = interactionSource,
+                    enabled = enabled
+                ),
+            enabled = enabled,
+            onClick = onClick,
+            interactionSource = interactionSource,
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(1.dp, DawnBorder),
+            colors = ButtonDefaults.outlinedButtonColors(containerColor = DawnSurface)
+        ) {
+            Text(text = text)
+        }
     }
 }
 
@@ -210,13 +566,25 @@ fun PillButton(
     onClick: () -> Unit,
     enabled: Boolean = true
 ) {
-    OutlinedButton(
-        enabled = enabled,
-        onClick = onClick,
-        shape = RoundedCornerShape(999.dp),
-        border = BorderStroke(1.dp, DawnBorder),
-        colors = ButtonDefaults.outlinedButtonColors(containerColor = DawnSurface)
+    val interactionSource = remember { MutableInteractionSource() }
+
+    CompositionLocalProvider(
+        LocalIndication provides rememberDonDoneGrayRipple()
     ) {
-        Text(text = text, style = MaterialTheme.typography.labelLarge)
+        OutlinedButton(
+            enabled = enabled,
+            onClick = onClick,
+            interactionSource = interactionSource,
+            modifier = Modifier.pressableScale(
+                interactionSource = interactionSource,
+                enabled = enabled,
+                pressedScale = 0.98f
+            ),
+            shape = RoundedCornerShape(999.dp),
+            border = BorderStroke(1.dp, DawnBorder),
+            colors = ButtonDefaults.outlinedButtonColors(containerColor = DawnSurface)
+        ) {
+            Text(text = text, style = MaterialTheme.typography.labelLarge)
+        }
     }
 }
